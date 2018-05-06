@@ -44,8 +44,8 @@ white = (255, 255, 255)
 
 bot.remove_command('help')
 
-allowedusers = {204778476102877187, 226595531844091904, 191602259904167936} #put your user id here, and it will allow you to use the 'hidden' commands (and shutdown command)
-approved_channels = {418987056111550464, 436300339273269278}
+allowedusers = {204778476102877187, 226595531844091904, 191602259904167936, 109710323094683648} #put your user id here, and it will allow you to use the 'hidden' commands (and shutdown command)
+approved_channels = {442827637514305556}
 
 def allowed_users():
     async def pred(ctx):
