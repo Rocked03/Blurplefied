@@ -5,8 +5,6 @@
 
 
 # https://www.python.org/downloads/ v3.6.5
-
-from config import *
 import discord # discord.py rewrite
 # pip install -U git+https://github.com/Rapptz/discord.py@rewrite#egg=discord.py[voice]
 from discord.ext import commands
@@ -21,10 +19,18 @@ import datetime
 import aiohttp
 import copy
 import sys
+import os
 import time
 from resizeimage import resizeimage
 #pip install python-resize-image
 import math
+
+try:
+    from config import *
+except ModuleNotFoundError:
+    # Probably in a docker container, just read environment
+    TOKEN = os.environ.get('TOKEN')
+    BOT_PREFIX = os.environ.get('BOT_PREFIX')
 
 description = '''Blurple Bot'''
 bot = commands.Bot(command_prefix=BOT_PREFIX, description=description)
@@ -145,7 +151,7 @@ async def timeit(ctx, *, command: str):
     start = time.time()
     await new_ctx.reinvoke()
     end = time.time()
-    
+
     await ctx.send(f'**{BOT_PREFIX}{new_ctx.command.qualified_name}** took **{end - start:.2f}s** to run')
 
 
@@ -231,7 +237,7 @@ async def blurple(ctx, arg1 = None):
         blurple = (114, 137, 218)
         darkblurple = (78, 93, 148)
         white = (255, 255, 255)
-        
+
         img = im.load()
 
         for x in range(imsize[0]):
@@ -360,7 +366,7 @@ async def blurplefy(ctx, arg1 = None):
         isgif = False
 
 
-    
+
 
     end = time.time()
     #await ctx.send(f'{ctx.message.author.display_name}, image fetched, analysing image (This process can sometimes take a while depending on the size of the image) ({end - start:.2f}s)')
