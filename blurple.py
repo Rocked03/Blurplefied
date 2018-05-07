@@ -98,7 +98,7 @@ async def ping(ctx):
     await ctx.send(embed=embed)
 
 
-@bot.command()
+#@bot.command()
 async def countdown(ctx):
     def strfdelta(tdelta, fmt):
         d = {"days": tdelta.days}
@@ -160,7 +160,7 @@ async def timeit(ctx, *, command: str):
 async def blurple(ctx, arg1 = None):
     picture = None
 
-    await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
+    #await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
 
 
     start = time.time()
@@ -219,7 +219,7 @@ async def blurple(ctx, arg1 = None):
         imsize = list(im.size)
         impixels = imsize[0]*imsize[1]
         end = time.time()
-        await ctx.send(f'{ctx.message.author.display_name}, image resized smaller for easier processing ({end-start:.2f}s)')
+        #await ctx.send(f'{ctx.message.author.display_name}, image resized smaller for easier processing ({end-start:.2f}s)')
         start = time.time()
 
     def imager(im):
@@ -296,20 +296,20 @@ async def blurple(ctx, arg1 = None):
         embed.set_footer(text=f"Please note: Discord slightly reduces quality of the images, therefore the percentages may be slightly inaccurate. | Content requested by {ctx.author}")
         embed.set_image(url="attachment://image.png")
         embed.set_thumbnail(url=picture)
-        await ctx.send(embed=embed, file=image)
+        await ctx.send(content=f"{ctx.message.author.mention}", embed=embed, file=image)
 
         if blurplenesspercentage > 75 and picture == ctx.author.avatar_url and blurpleuserrole not in ctx.author.roles and percentblurple > 5:
-            await ctx.send(f"{ctx.message.author.display_name}, as your profile pic has enough blurple (over 75% in total and over 5% blurple), you have recieved the role **{blurpleuserrole.name}**!")
+            await ctx.send(f"{ctx.message.author.mention}, as your profile pic has enough blurple (over 75% in total and over 5% blurple), you have recieved the role **{blurpleuserrole.name}**!")
             await ctx.author.add_roles(blurpleuserrole)
         elif picture == ctx.author.avatar_url and blurpleuserrole not in ctx.author.roles:
-            await ctx.send(f"{ctx.message.author.display_name}, your profile pic does not have enough blurple (over 75% in total and over 5% blurple), therefore you are not eligible for the role '{blurpleuserrole.name}'. However, this colour detecting algorithm is automated, so if you believe your pfp is blurple enough, please DM a Staff member and they will manually give you the role if it is blurple enough. (Not sure how to make a blurple logo? Head over to <#412755378732793868> or <#436026199664361472>!)")
+            await ctx.send(f"{ctx.message.author.mention}, your profile pic does not have enough blurple (over 75% in total and over 5% blurple), therefore you are not eligible for the role '{blurpleuserrole.name}'. However, this colour detecting algorithm is automated, so if you believe your pfp is blurple enough, please DM a Staff member and they will manually give you the role if it is blurple enough. (Not sure how to make a blurple logo? Head over to <#412755378732793868> or <#436026199664361472>!)")
 
 @bot.command(aliases=['blurplfy', 'blurplefier'])
 @commands.cooldown(rate=1, per=180, type=BucketType.user)
 async def blurplefy(ctx, arg1 = None):
     picture = None
 
-    await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
+    #await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
 
 
     start = time.time()
@@ -454,7 +454,7 @@ async def blurplefy(ctx, arg1 = None):
                 embed.set_image(url="attachment://image.gif")
                 embed.set_footer(text=f"Please note - This blurplefier is automated and therefore may not always give you the best result. Disclaimer: This image is a gif, and the quality does not always turn out great. HOWEVER, the gif is quite often not as grainy as it appears in the preview | Content requested by {ctx.author}")
             embed.set_thumbnail(url=picture)
-            await ctx.send(embed=embed, file=image)
+            await ctx.send(content=f"{ctx.message.author.mention}", embed=embed, file=image)
         except Exception:
             await ctx.send(f"{ctx.author.display.name}, whoops! It looks like this gif is too big to upload. If you want, you can give it another go, except with a smaller version of the image. Sorry about that!")
 
@@ -464,7 +464,7 @@ async def blurplefy(ctx, arg1 = None):
 async def blurplefygif(ctx, arg1 = None):
     picture = None
 
-    await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
+    #await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
 
 
     start = time.time()
@@ -517,7 +517,7 @@ async def blurplefygif(ctx, arg1 = None):
     maxpixelcount = 1562500
 
     end = time.time()
-    await ctx.send(f'{ctx.message.author.display_name}, image fetched, analysing image (This process can sometimes take a while depending on the size of the image) ({end - start:.2f}s)')
+    #await ctx.send(f'{ctx.message.author.display_name}, image fetched, analysing image (This process can sometimes take a while depending on the size of the image) ({end - start:.2f}s)')
     start = time.time()
     if impixels > maxpixelcount:
         downsizefraction = math.sqrt(maxpixelcount/impixels)
@@ -525,7 +525,7 @@ async def blurplefygif(ctx, arg1 = None):
         imsize = list(im.size)
         impixels = imsize[0]*imsize[1]
         end = time.time()
-        await ctx.send(f'{ctx.message.author.display_name}, image resized smaller for easier processing ({end-start:.2f}s)')
+        #await ctx.send(f'{ctx.message.author.display_name}, image resized smaller for easier processing ({end-start:.2f}s)')
         start = time.time()
 
     def imager(im):
@@ -562,7 +562,7 @@ async def blurplefygif(ctx, arg1 = None):
         start = time.time()
         image = await bot.loop.run_in_executor(None, imager, im)
         end = time.time()
-        await ctx.send(f"{ctx.author.display_name}, image data extracted ({end - start:.2f}s)")
+        #await ctx.send(f"{ctx.author.display_name}, image data extracted ({end - start:.2f}s)")
         image = discord.File(fp=image, filename='image.gif')
 
 
@@ -571,7 +571,7 @@ async def blurplefygif(ctx, arg1 = None):
         embed.set_footer(text=f"Please note - This blurplefier is automated and therefore may not always give you the best result. This also currently does not work with gifs. | Content requested by {ctx.author}")
         embed.set_image(url="attachment://image.gif")
         embed.set_thumbnail(url=picture)
-        await ctx.send(embed=embed, file=image)
+        await ctx.send(content=f"{ctx.message.author.mention}", embed=embed, file=image)
 
 '''@bot.command(name='color', aliases=["colour"])
 async def color(ctx, *arg1):
