@@ -5,6 +5,7 @@ import copy
 import math
 import time
 import io
+import os
 import re
 
 import numpy as np
@@ -15,7 +16,6 @@ from PIL import Image, ImageEnhance, ImageSequence
 from discord.ext.commands.cooldowns import BucketType
 from discord.ext import commands
 
-from config import *
 
 try:
     from config import TOKEN, BOT_PREFIX
@@ -211,13 +211,6 @@ async def timeit(ctx, *, command: str):
     await ctx.send(f'**{BOT_PREFIX}{new_ctx.command.qualified_name}** took **{end - start:.2f}s** to run')
 
 
-@bot.command()
-@commands.cooldown(rate=1, per=180, type=BucketType.user)
-async def blurple(ctx, arg1=None):
-    picture = None
-
-    #await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
-
 async def collect_image(ctx, hint, static=False):
     mentions = MENTION_RE.findall(hint) if hint is not None else []
 
@@ -241,14 +234,14 @@ async def collect_image(ctx, hint, static=False):
                     break
                 length += len(dat)
                 if length > MAX_FILE_SIZE:
-                    return None, None, None
+                    return None, None
                 data.write(dat)
 
     data.seek(0)
     im = Image.open(data)
 
     if im.size[0] * im.size[1] > PIXEL_COUNT_LIMIT:
-        return None, None, None
+        return None, None
 
     frames = []
     for frame in ImageSequence.Iterator(im):
