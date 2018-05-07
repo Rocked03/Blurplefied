@@ -36,9 +36,8 @@ white = (255, 255, 255)
 
 bot.remove_command('help')
 
-allowedusers = set(os.environ.get('ALLOWED_USERS').split(','))
-approved_channels = set(os.environ.get('APPROVED_CHANNELS').split(','))
-
+allowedusers = set([int(i) for i in os.environ.get('ALLOWED_USERS').split(',')])
+approved_channels = set([int(i) for i in os.environ.get('APPROVED_CHANNELS').split(',')])
 
 def allowed_users():
     async def pred(ctx):
