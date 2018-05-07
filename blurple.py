@@ -15,8 +15,6 @@ from PIL import Image, ImageEnhance, ImageSequence
 from discord.ext.commands.cooldowns import BucketType
 from discord.ext import commands
 
-from config import *
-
 try:
     from config import TOKEN, BOT_PREFIX
 except ModuleNotFoundError:
