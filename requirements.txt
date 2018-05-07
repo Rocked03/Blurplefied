@@ -2,3 +2,4 @@ yarl<1.2
 git+https://github.com/Rapptz/discord.py.git@rewrite#egg=discord.py
 Pillow
 python-resize-image
+numpy
