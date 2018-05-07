@@ -3,30 +3,22 @@
 # This code is copied straight from my original, therefore there are some little hidden unused things you might find when looking around. ;)
 
 
-
-# https://www.python.org/downloads/ v3.6.5
-import discord # discord.py rewrite
-# pip install -U git+https://github.com/Rapptz/discord.py@rewrite#egg=discord.py[voice]
+import discord
 from discord.ext import commands
 from discord.ext.commands.cooldowns import BucketType
-import asyncio
 from PIL import Image, ImageEnhance, ImageSequence
-import PIL
-#pip install Pillow
 from io import BytesIO
 import io
 import datetime
 import aiohttp
 import copy
-import sys
 import os
 import time
 from resizeimage import resizeimage
-#pip install python-resize-image
 import math
 
 try:
-    from config import *
+    from config import TOKEN, BOT_PREFIX
 except ModuleNotFoundError:
     # Probably in a docker container, just read environment
     TOKEN = os.environ.get('TOKEN')
@@ -44,21 +36,25 @@ white = (255, 255, 255)
 
 bot.remove_command('help')
 
-allowedusers = {204778476102877187, 226595531844091904, 191602259904167936, 109710323094683648} #put your user id here, and it will allow you to use the 'hidden' commands (and shutdown command)
-approved_channels = {442827637514305556}
+allowedusers = set(os.environ.get('ALLOWED_USERS').split(','))
+approved_channels = set(os.environ.get('APPROVED_CHANNELS').split(','))
+
 
 def allowed_users():
     async def pred(ctx):
         return ctx.author.id in allowedusers
     return commands.check(pred)
 
+
 @bot.check
 async def globally_block_dms(ctx):
     return ctx.guild is not None
 
+
 @bot.check
 async def only_in_commands_channels(ctx):
     return ctx.channel.id in approved_channels or ctx.author.id in allowedusers
+
 
 @bot.event
 async def on_connect():
@@ -70,6 +66,7 @@ async def on_connect():
     activity = discord.Game(name="Type "+BOT_PREFIX+"help")
     await bot.change_presence(activity=activity)
 
+
 @bot.command(name='shutdown', aliases=["reboot"])
 @allowed_users()
 async def shutdown(ctx):
@@ -77,6 +74,7 @@ async def shutdown(ctx):
     embed.add_field(name="Shutting down<a:underscore:420740967939964928>", value="Blurplefied")
     await ctx.send(embed=embed)
     await bot.logout()
+
 
 @bot.command()
 async def help(ctx):
@@ -89,6 +87,7 @@ async def help(ctx):
     embed.set_thumbnail(url=bot.user.avatar_url)
     await ctx.send(embed=embed)
 
+
 @bot.command()
 async def ping(ctx):
     latency=bot.latency*1000
@@ -98,6 +97,7 @@ async def ping(ctx):
     embed.set_author(name="Ping!")
     embed.add_field(name='Bot latency', value=latency+"ms")
     await ctx.send(embed=embed)
+
 
 @bot.command()
 async def countdown(ctx):
@@ -112,6 +112,7 @@ async def countdown(ctx):
     embed.set_author(name="Time left until Discord's 3rd Anniversary")
     embed.add_field(name="Countdown to midnight May 13 California time (UTC-7)", value=(strfdelta(timeleft, "**{days}** days, **{hours}** hours, **{minutes}** minutes, and **{seconds}** seconds")))
     await ctx.send(embed=embed)
+
 
 @bot.event
 async def on_command_error(ctx, error):
