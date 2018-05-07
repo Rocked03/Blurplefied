@@ -1,27 +1,22 @@
-# THIS BLOCK OF 'import' BELOW INCLUDE LIBS NOT INCLUDED IN DEFAULT PYTHON
-# THESE CAN BE INSTALLED BY TYPING THE PIP INSTALLS INTO COMMAND PROMPT
-# This code is copied straight from my original, therefore there are some little hidden unused things you might find
-# when looking around. ;)
-
-# https://www.python.org/downloads/ v3.6.5
-
-from config import *
-import discord  # discord.py rewrite
-# pip install -U git+https://github.com/Rapptz/discord.py@rewrite#egg=discord.py[voice]
-from discord.ext import commands
-from discord.ext.commands.cooldowns import BucketType
-from PIL import Image, ImageEnhance, ImageSequence
-# pip install Pillow
-from io import BytesIO
-import io
+import traceback
 import datetime
 import aiohttp
 import copy
-import time
-from resizeimage import resizeimage
-import numpy as np
-# pip install python-resize-image
 import math
+import time
+import io
+import re
+
+import numpy as np
+import discord
+
+from PIL import Image, ImageEnhance, ImageSequence
+
+from discord.ext.commands.cooldowns import BucketType
+from discord.ext import commands
+
+from config import *
+
 
 description = '''Blurple Bot'''
 bot = commands.Bot(command_prefix=BOT_PREFIX, description=description)
@@ -33,13 +28,58 @@ BLURPLE_HEX = 0x7289da
 DARK_BLURPLE = (78, 93, 148, 255)
 WHITE = (255, 255, 255, 255)
 
-MAX_PIXEL_COUNT = 1562500
+PIXEL_COUNT_LIMIT = 3840 * 2160
+MAX_PIXEL_COUNT = 1280 * 720
+MAX_FILE_SIZE = 8 * 1024 * 1024 * 16  # 16M
+
+COLOUR_BUFFER = 20
+
+MENTION_RE = re.compile(r'<@!?([0-9]+)>')
 
 bot.remove_command('help')
 
 # Put your user id here, and it will allow you to use the 'hidden' commands (and shutdown command)
-allowed_users_list = {204778476102877187, 226595531844091904, 191602259904167936}
-approved_channels = {418987056111550464, 436300339273269278}
+allowed_users_list = {161508165672763392, 204778476102877187, 226595531844091904, 191602259904167936}
+approved_channels = {290757101914030080, 418987056111550464, 436300339273269278}
+
+
+class ImageStats:
+    __slots__ = ('dark', 'blurple', 'white', 'pixels')
+
+    def __init__(self, dark, blurple, white, pixels):
+        self.dark = dark
+        self.blurple = blurple
+        self.white = white
+        self.pixels = pixels
+
+    @property
+    def total(self):
+        return self.dark + self.blurple + self.white
+
+    def percentage(self, value):
+        return round(value / self.pixels * 100, 2)
+
+    @classmethod
+    def from_image(cls, img):
+        arr = np.asarray(img).copy()
+
+        dark = np.all(np.abs(arr - DARK_BLURPLE) < COLOUR_BUFFER, axis=2).sum()
+        blurple = np.all(np.abs(arr - BLURPLE) < COLOUR_BUFFER, axis=2).sum()
+        white = np.all(np.abs(arr - WHITE) < COLOUR_BUFFER, axis=2).sum()
+        pixels = img.size[0] * img.size[1]
+
+        mask = np.logical_and(np.abs(arr - DARK_BLURPLE) >= COLOUR_BUFFER,
+                              np.abs(arr - BLURPLE) >= COLOUR_BUFFER,
+                              np.abs(arr - WHITE) >= COLOUR_BUFFER)
+        mask = np.any(mask, axis=2)
+
+        arr[mask] = (0, 0, 0, 255)
+
+        image_file_object = io.BytesIO()
+        Image.fromarray(np.uint8(arr)).save(image_file_object, format='png')
+        image_file_object.seek(0)
+
+        return image_file_object, ImageStats(dark, blurple, white, pixels)
 
 
 def allowed_users():
@@ -131,9 +171,6 @@ async def on_command_error(ctx, error):
     if isinstance(error, ignored):
         return
 
-    '''tracebackerror = traceback.print_exception(type(error), error, error.__traceback__)
-    await channel.send(tracebackerror)'''
-
     if isinstance(error, commands.CommandOnCooldown):
         if int(ctx.message.author.id) in allowed_users_list:
             await ctx.reinvoke()
@@ -147,9 +184,6 @@ async def on_command_error(ctx, error):
             # await ctx.message.delete()
             return
 
-    print(error)
-
-    import traceback
     print(''.join(traceback.format_exception(type(error), error, error.__traceback__)))
 
     if isinstance(error, commands.CheckFailure):
@@ -171,361 +205,169 @@ async def timeit(ctx, *, command: str):
     await ctx.send(f'**{BOT_PREFIX}{new_ctx.command.qualified_name}** took **{end - start:.2f}s** to run')
 
 
+async def collect_image(ctx, hint, static=False):
+    mentions = MENTION_RE.findall(hint) if hint is not None else []
+
+    if mentions:
+        user = await bot.get_user_info(int(mentions[0]))
+        url = user.avatar_url
+    elif hint:
+        url = hint
+    elif ctx.message.attachments:
+        url = ctx.message.attachments[0].url
+    else:
+        url = ctx.author.avatar_url
+
+    data = io.BytesIO()
+    length = 0
+    async with aiohttp.ClientSession() as cs:
+        async with cs.get(url) as resp:
+            while True:
+                dat = await resp.content.read(16384)
+                if not dat:
+                    break
+                length += len(dat)
+                if length > MAX_FILE_SIZE:
+                    return None, None, None
+                data.write(dat)
+
+    data.seek(0)
+    im = Image.open(data)
+
+    if im.size[0] * im.size[1] > PIXEL_COUNT_LIMIT:
+        return None, None, None
+
+    frames = []
+    for frame in ImageSequence.Iterator(im):
+        frames.append(frame.copy())
+        if static:
+            break
+
+    if im.size[0] * im.size[1] > MAX_PIXEL_COUNT:
+        aspect = im.size[0] / im.size[1]
+
+        height = math.sqrt(MAX_PIXEL_COUNT / aspect)
+        width = height * aspect
+
+        if height < im.size[1] and width < im.size[0]:
+            for n, frame in enumerate(frames):
+                frames[n] = frame.resize((int(width), int(height)), Image.ANTIALIAS)
+
+    for n, frame in enumerate(frames):
+        frames[n] = frame.convert('RGBA')
+
+    return frames, url
+
+
+def blurplefy_image(img):
+    img = img.convert(mode='L')
+    img = ImageEnhance.Contrast(img).enhance(1000)
+    img = img.convert(mode='RGB')
+
+    arr = np.asarray(img).copy()
+    arr[np.any(arr != 255, axis=2)] = BLURPLE[:-1]
+
+    return Image.fromarray(np.uint8(arr))
+
+
 @bot.command()
 @commands.cooldown(rate=1, per=180, type=BucketType.user)
 async def blurple(ctx, arg1=None):
-    picture = None
-
-    start = time.time()
-    if arg1 is not None:
-        if "<@!" in arg1:
-            arg1 = arg1[:-1]
-            arg1 = arg1[3:]
-        if "<@" in arg1:
-            arg1 = arg1[:-1]
-            arg1 = arg1[2:]
-        if arg1.isdigit():
-            try:
-                user = await bot.get_user_info(int(arg1))
-                picture = user.avatar_url
-            except Exception:
-                pass
-        else:
-            picture = arg1
-    else:
-        link = ctx.message.attachments
-        if len(link) != 0:
-            for image in link:
-                picture = image.url
-
-    if picture is None:
-        picture = ctx.author.avatar_url
-
-    try:
-        async with aiohttp.ClientSession() as cs:
-            async with cs.get(picture) as r:
-                response = await r.read()
-    except ValueError:
+    frames, url = await collect_image(ctx, arg1, True)
+    if frames is None:
         return await ctx.message.add_reaction('\N{CROSS MARK}')
 
-    colour_buffer = 20
-
-    try:
-        im = Image.open(BytesIO(response))
-    except Exception:
-        return await ctx.message.add_reaction('\N{CROSS MARK}')
-
-    im = im.convert('RGBA')
-    impixels = im.size[0] * im.size[1]
-
-    end = time.time()
-    # await ctx.send(f'{ctx.message.author.display_name}, image fetched, analysing image (This process can sometimes '
-    #                f'take a while depending on the size of the image) ({end - start:.2f}s)')
-    start = time.time()
-    if impixels > MAX_PIXEL_COUNT:
-        downsizefraction = math.sqrt(MAX_PIXEL_COUNT / impixels)
-        im = resizeimage.resize_width(im, (im.size[0] * downsizefraction))
-        await ctx.send(
-            f'{ctx.message.author.display_name}, image resized smaller for easier processing ({end-start:.2f}s)')
-
-    def scan_blurple(im):
-        arr = np.asarray(im).copy()
-
-        no_dark = np.all(np.abs(arr - DARK_BLURPLE) < colour_buffer, axis=2).sum()
-        no_blurple = np.all(np.abs(arr - BLURPLE) < colour_buffer, axis=2).sum()
-        no_white = np.all(np.abs(arr - WHITE) < colour_buffer, axis=2).sum()
-        no_total = no_dark + no_blurple + no_white
-        no_pixels = im.size[0] * im.size[1]
-
-        mask = np.logical_and(np.abs(arr - DARK_BLURPLE) >= colour_buffer,
-                              np.abs(arr - BLURPLE) >= colour_buffer,
-                              np.abs(arr - WHITE) >= colour_buffer)
-        mask = np.all(mask, axis=2)
-
-        arr[mask] = (0, 0, 0, 255)
-
-        image_file_object = io.BytesIO()
-        Image.fromarray(np.uint8(arr)).save(image_file_object, format='png')
-        image_file_object.seek(0)
-        return image_file_object, no_dark, no_white, no_blurple, no_pixels, no_total
-
-    # start = time.time()
-    image, no_dark, no_white, no_blurple, no_pixels, no_total = await bot.loop.run_in_executor(None, scan_blurple,
-                                                                                               im)
-    # end = time.time()
-    # await ctx.send(f"{ctx.author.display_name}, image data extracted ({end - start:.2f}s)")
+    image, stats = await bot.loop.run_in_executor(None, ImageStats.from_image, frames[0])
     image = discord.File(fp=image, filename='image.png')
 
-    blurpleness_percentage = round(((no_total / no_pixels) * 100), 2)
-    percent_blurple = round(((no_blurple / no_pixels) * 100), 2)
-    percentd_blurple = round(((no_dark / no_pixels) * 100), 2)
-    percent_white = round(((no_white / no_pixels) * 100), 2)
-
-    blurple_user_role = discord.utils.get(ctx.message.guild.roles, id=436300514561622016)
     embed = discord.Embed(Title="", colour=0x7289DA)
-    embed.add_field(name="Total amount of Blurple", value=f"{blurpleness_percentage}%", inline=False)
-    embed.add_field(name="Blurple (rgb(114, 137, 218))", value=f"{percent_blurple}%", inline=True)
-    embed.add_field(name="White (rgb(255, 255, 255))", value=f"{percent_white}\%", inline=True)
-    embed.add_field(name="Dark Blurple (rgb(78, 93, 148))", value=f"{percentd_blurple}\%", inline=True)
+    embed.add_field(name="Total amount of Blurple", value=f"{stats.percentage(stats.total)}%", inline=False)
+    embed.add_field(name="Blurple (rgb(114, 137, 218))", value=f"{stats.percentage(stats.blurple)}%", inline=True)
+    embed.add_field(name="White (rgb(255, 255, 255))", value=f"{stats.percentage(stats.white)}\%", inline=True)
+    embed.add_field(name="Dark Blurple (rgb(78, 93, 148))", value=f"{stats.percentage(stats.dark)}\%", inline=True)
     embed.add_field(name="Guide",
-                    value="Blurple, White, Dark Blurple = Blurple, White, and Dark Blurple (respectively) \nBlack = Not Blurple, White, or Dark Blurple",
+                    value="Blurple, White, Dark Blurple = Blurple, White, and Dark Blurple (respectively)\n"
+                          "Black = Not Blurple, White, or Dark Blurple",
                     inline=False)
     embed.set_footer(
-        text=f"Please note: Discord slightly reduces quality of the images, therefore the percentages may be slightly inaccurate. | Content requested by {ctx.author}")
+        text=f"Please note: Discord slightly reduces quality of the images, therefore the percentages may be slightly "
+             f"inaccurate. | Content requested by {ctx.author}")
     embed.set_image(url="attachment://image.png")
-    embed.set_thumbnail(url=picture)
+    embed.set_thumbnail(url=url)
     await ctx.send(embed=embed, file=image)
 
-    if blurple_user_role is not None:
-        if blurpleness_percentage > 75 and picture == ctx.author.avatar_url and \
-                blurple_user_role not in ctx.author.roles and percent_blurple > 5:
-            await ctx.send(
-                f"{ctx.message.author.display_name}, as your profile pic has enough blurple (over 75% in total and over 5% blurple), you have recieved the role **{blurple_user_role.name}**!")
-            await ctx.author.add_roles(blurple_user_role)
-        elif picture == ctx.author.avatar_url and blurple_user_role not in ctx.author.roles:
-            await ctx.send(
-                f"{ctx.message.author.display_name}, your profile pic does not have enough blurple (over 75% in total and over 5% blurple), therefore you are not eligible for the role '{blurple_user_role.name}'. However, this colour detecting algorithm is automated, so if you believe your pfp is blurple enough, please DM a Staff member and they will manually give you the role if it is blurple enough. (Not sure how to make a blurple logo? Head over to <#412755378732793868> or <#436026199664361472>!)")
+    if url == ctx.author.avatar_url:
+        blurple_user_role = discord.utils.get(ctx.message.guild.roles, id=436300514561622016)
+
+        if blurple_user_role is not None:
+            if stats.percentage(stats.total) > 75 and blurple_user_role not in ctx.author.roles and \
+                    stats.percentage(stats.blurple) > 5:
+                await ctx.send(
+                    f"{ctx.message.author.mention}, as your profile pic has enough blurple (over 75% in total and "
+                    f"over 5% blurple), you have received the role **{blurple_user_role.name}**!")
+                await ctx.author.add_roles(blurple_user_role)
+            elif url == ctx.author.avatar_url and blurple_user_role not in ctx.author.roles:
+                await ctx.send(
+                    f"{ctx.message.author.display_name}, your profile pic does not have enough blurple (over 75% in "
+                    f"total and over 5% blurple), therefore you are not eligible for the role "
+                    f"'{blurple_user_role.mention}'. However, this colour detecting algorithm is automated, so if you "
+                    f"believe your pfp is blurple enough, please DM a Staff member and they will manually give you the "
+                    f"role if it is blurple enough. (Not sure how to make a blurple logo? Head over to "
+                    f"<#412755378732793868> or <#436026199664361472>!)")
 
 
-@bot.command(aliases=['blurplfy', 'blurplefier'])
+@bot.command(aliases=['blurplfy', 'blurplefier', 'blurplfygif', 'blurplefiergif', 'blurplefygif'])
 @commands.cooldown(rate=1, per=180, type=BucketType.user)
 async def blurplefy(ctx, arg1=None):
-    picture = None
+    frames, url = await collect_image(ctx, arg1)
+    if frames is None:
+        return await ctx.message.add_reaction('\N{CROSS MARK}')
 
-    start = time.time()
-    if arg1 is not None:
-        if "<@!" in arg1:
-            arg1 = arg1[:-1]
-            arg1 = arg1[3:]
-        if "<@" in arg1:
-            arg1 = arg1[:-1]
-            arg1 = arg1[2:]
-        if arg1.isdigit():
-            try:
-                user = await bot.get_user_info(int(arg1))
-                picture = user.avatar_url
-            except Exception:
-                pass
+    if len(frames) > 1:
+        gif_loop = int(frames[0].info.get('loop', 0))
+        gif_duration = frames[0].info.get('duration')
+    else:
+        gif_loop = gif_duration = None
+
+    def process_sequence(frames, loop, duration):
+        for n, frame in enumerate(frames):
+            frames[n] = blurplefy_image(frame)
+
+        image_file_object = io.BytesIO()
+        if len(frames) > 1:
+            frames[0].save(image_file_object, format='gif', save_all=True, append_images=frames[1:], loop=loop,
+                           duration=duration)
         else:
-            picture = arg1
-    else:
-        link = ctx.message.attachments
-        if len(link) != 0:
-            for image in link:
-                picture = image.url
-
-    if picture is None:
-        picture = ctx.author.avatar_url
-
-    try:
-        async with aiohttp.ClientSession() as cs:
-            async with cs.get(picture) as r:
-                response = await r.read()
-    except ValueError:
-        return await ctx.message.add_reaction('\N{CROSS MARK}')
-
-    colourbuffer = 20
-
-    try:
-        im = Image.open(BytesIO(response))
-    except Exception:
-        return await ctx.message.add_reaction('\N{CROSS MARK}')
-
-    try:
-        i = im.info["version"]
-        is_gif = True
-        gif_loop = int(im.info["loop"])
-    except Exception:
-        is_gif = False
-        gif_loop = None
-
-    # end = time.time()
-    # await ctx.send(f'{ctx.message.author.display_name}, image fetched, analysing image (This process can sometimes '
-    #                f'take a while depending on the size of the image) ({end - start:.2f}s)')
-    # start = time.time()
-    if im.size[0] * im.size[1] > MAX_PIXEL_COUNT:
-        downsizefraction = math.sqrt(MAX_PIXEL_COUNT / (im.size[0] * im.size[1]))
-        im = resizeimage.resize_width(im, (im.size[0] * downsizefraction))
-        # end = time.time()
-        # await ctx.send(f'{ctx.message.author.display_name}, image resized smaller for easier processing '
-        #                f'({end-start:.2f}s)')
-        # start = time.time()
-
-    def imager(im):
-        im = im.convert(mode='L')
-        im = ImageEnhance.Contrast(im).enhance(1000)
-        im = im.convert(mode='RGB')
-
-        arr = np.asarray(im).copy()
-        arr[np.any(arr != 255, axis=2)] = BLURPLE[:-1]
-
-        image_file_object = io.BytesIO()
-        Image.fromarray(np.uint8(arr)).save(image_file_object, format='png')
+            frames[0].save(image_file_object, format='png')
         image_file_object.seek(0)
+
         return image_file_object
 
-    def gifimager(im, gifloop):
-        frames = [frame.copy() for frame in ImageSequence.Iterator(im)]
-        newgif = []
-
-        for frame in frames:
-            frame = frame.convert(mode='L')
-            frame = ImageEnhance.Contrast(frame).enhance(1000)
-            frame = frame.convert(mode='RGB')
-
-            arr = np.asarray(frame).copy()
-            arr[np.any(arr != 255, axis=2)] = BLURPLE[:-1]
-
-            newgif.append(Image.fromarray(np.uint8(arr)))
-
-        image_file_object = io.BytesIO()
-
-        gif = newgif[0]
-        gif.save(image_file_object, format='gif', save_all=True, append_images=newgif[1:], loop=0)
-
-        image_file_object.seek(0)
-        return image_file_object
-
-    # start = time.time()
-    if not is_gif:
-        image = await bot.loop.run_in_executor(None, imager, im)
-    else:
-        image = await bot.loop.run_in_executor(None, gifimager, im, gif_loop)
-    # end = time.time()
-    # await ctx.send(f"{ctx.author.display_name}, image data extracted ({end - start:.2f}s)")
-    if not is_gif:
-        image = discord.File(fp=image, filename='image.png')
-    else:
-        image = discord.File(fp=image, filename='image.gif')
+    image = await bot.loop.run_in_executor(None, process_sequence, frames, gif_loop, gif_duration)
+    image = discord.File(fp=image, filename='blurple.png' if len(frames) == 1 else 'blurple.gif')
 
     try:
         embed = discord.Embed(Title="", colour=0x7289DA)
         embed.set_author(name="Blurplefier - makes your image blurple!")
-        if not is_gif:
-            embed.set_image(url="attachment://image.png")
+        if len(frames) == 1:
+            embed.set_image(url="attachment://blurple.png")
             embed.set_footer(
-                text=f"Please note - This blurplefier is automated and therefore may not always give you the best"
+                text=f"Please note - This blurplefier is automated and therefore may not always give you the best "
                      f"result. | Content requested by {ctx.author}")
         else:
-            embed.set_image(url="attachment://image.gif")
+            embed.set_image(url="attachment://blurple.gif")
             embed.set_footer(
-                text=f"Please note - This blurplefier is automated and therefore may not always give you the best"
-                     f"result. Disclaimer: This image is a gif, and the quality does not always turn out great."
-                     f"HOWEVER, the gif is quite often not as grainy as it appears in the preview | Content"
+                text=f"Please note - This blurplefier is automated and therefore may not always give you the best "
+                     f"result. Disclaimer: This image is a gif, and the quality does not always turn out great. "
+                     f"HOWEVER, the gif is quite often not as grainy as it appears in the preview | Content "
                      f"requested by {ctx.author}")
-        embed.set_thumbnail(url=picture)
+        embed.set_thumbnail(url=url)
         await ctx.send(embed=embed, file=image)
-    except Exception:
+    except discord.errors.DiscordException:
         await ctx.send(
-            f"{ctx.author.display.name}, whoops! It looks like this gif is too big to upload. If you want, you can"
+            f"{ctx.author.mention}, whoops! It looks like this image is too big to upload. If you want, you can "
             f"give it another go, except with a smaller version of the image. Sorry about that!")
 
 
-@bot.command(aliases=['blurplfygif', 'blurplefiergif'])
-@commands.cooldown(rate=1, per=90, type=BucketType.user)
-@allowed_users()
-async def blurplefygif(ctx, arg1=None):
-    picture = None
-
-    start = time.time()
-    if arg1 != None:
-        if "<@!" in arg1:
-            arg1 = arg1[:-1]
-            arg1 = arg1[3:]
-        if "<@" in arg1:
-            arg1 = arg1[:-1]
-            arg1 = arg1[2:]
-        if arg1.isdigit() == True:
-            try:
-                user = await bot.get_user_info(int(arg1))
-                picture = user.avatar_url
-            except Exception:
-                return await ctx.message.add_reaction('\N{CROSS MARK}')
-        else:
-            picture = arg1
-    else:
-        link = ctx.message.attachments
-        if len(link) != 0:
-            for image in link:
-                picture = image.url
-
-    if picture is None:
-        picture = ctx.author.avatar_url
-
-    try:
-        async with aiohttp.ClientSession() as cs:
-            async with cs.get(picture) as r:
-                response = await r.read()
-    except ValueError:
-        return await ctx.message.add_reaction('\N{CROSS MARK}')
-
-    colourbuffer = 20
-
-    try:
-        im = Image.open(BytesIO(response))
-    except Exception:
-        return await ctx.message.add_reaction('\N{CROSS MARK}')
-
-    if im.format != 'GIF':
-        return await ctx.message.add_reaction('\N{CROSS MARK}')
-
-    imsize = list(im.size)
-    impixels = imsize[0] * imsize[1]
-
-    maxpixelcount = 1562500
-
-    end = time.time()
-    await ctx.send(f'{ctx.message.author.display_name}, image fetched, analysing image (This process can sometimes take'
-                   f'a while depending on the size of the image) ({end - start:.2f}s)')
-    start = time.time()
-    if impixels > maxpixelcount:
-        downsizefraction = math.sqrt(maxpixelcount / impixels)
-        im = resizeimage.resize_width(im, (imsize[0] * downsizefraction))
-        imsize = list(im.size)
-        impixels = imsize[0] * imsize[1]
-        end = time.time()
-        await ctx.send(
-            f'{ctx.message.author.display_name}, image resized smaller for easier processing ({end-start:.2f}s)')
-        start = time.time()
-
-    def imager(im):
-        frames = [frame.copy() for frame in ImageSequence.Iterator(im)]
-        newgif = []
-
-        for frame in frames:
-            frame = frame.convert(mode='L')
-            frame = ImageEnhance.Contrast(frame).enhance(1000)
-            frame = frame.convert(mode='RGB')
-
-            arr = np.asarray(frame).copy()
-            arr[np.any(arr != 255, axis=2)] = BLURPLE[:-1]
-
-            newgif.append(Image.fromarray(np.uint8(arr)))
-
-        image_file_object = io.BytesIO()
-
-        gif = newgif[0]
-        gif.save(image_file_object, format='gif', save_all=True, append_images=newgif[1:], loop=0)
-
-        image_file_object.seek(0)
-        return image_file_object
-
-    # start = time.time()
-    image = await bot.loop.run_in_executor(None, imager, im)
-    # end = time.time()
-    # await ctx.send(f"{ctx.author.display_name}, image data extracted ({end - start:.2f}s)")
-    image = discord.File(fp=image, filename='image.gif')
-
-    embed = discord.Embed(Title="", colour=0x7289DA)
-    embed.set_author(name="Blurplefier - makes your image blurple!")
-    embed.set_footer(
-        text=f"Please note - This blurplefier is automated and therefore may not always give you the best result. This also currently does not work with gifs. | Content requested by {ctx.author}")
-    embed.set_image(url="attachment://image.gif")
-    embed.set_thumbnail(url=picture)
-    await ctx.send(embed=embed, file=image)
-
-
-try:
+if __name__ == '__main__':
     bot.run(TOKEN)
-except Exception:
-    print("Whoops, bot failed to connect to Discord.")
