@@ -210,13 +210,6 @@ async def timeit(ctx, *, command: str):
     await ctx.send(f'**{BOT_PREFIX}{new_ctx.command.qualified_name}** took **{end - start:.2f}s** to run')
 
 
-#@bot.command()
-#@commands.cooldown(rate=1, per=180, type=BucketType.user)
-#async def blurple(ctx, arg1=None):
-#    picture = None
-#
-#    #await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
-
 async def collect_image(ctx, hint, static=False):
     mentions = MENTION_RE.findall(hint) if hint is not None else []
 
