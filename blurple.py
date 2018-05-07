@@ -17,6 +17,12 @@ from discord.ext import commands
 
 from config import *
 
+try:
+    from config import TOKEN, BOT_PREFIX
+except ModuleNotFoundError:
+    # Probably in a docker container, just read environment
+    TOKEN = os.environ.get('TOKEN')
+    BOT_PREFIX = os.environ.get('BOT_PREFIX')
 
 description = '''Blurple Bot'''
 bot = commands.Bot(command_prefix=BOT_PREFIX, description=description)
@@ -38,9 +44,8 @@ MENTION_RE = re.compile(r'<@!?([0-9]+)>')
 
 bot.remove_command('help')
 
-# Put your user id here, and it will allow you to use the 'hidden' commands (and shutdown command)
-allowed_users_list = {161508165672763392, 204778476102877187, 226595531844091904, 191602259904167936}
-approved_channels = {290757101914030080, 418987056111550464, 436300339273269278}
+allowed_users_list = set([int(i) for i in os.environ.get('ALLOWED_USERS').split(',')])
+approved_channels = set([int(i) for i in os.environ.get('APPROVED_CHANNELS').split(',')])
 
 
 class ImageStats:
@@ -99,6 +104,7 @@ async def only_in_commands_channels(ctx):
     return ctx.channel.id in approved_channels or ctx.author.id in allowed_users_list
 
 
+
 @bot.event
 async def on_connect():
     print('------')
@@ -147,7 +153,7 @@ async def ping(ctx):
     await ctx.send(embed=embed)
 
 
-@bot.command()
+#@bot.command()
 async def countdown(ctx):
     def strfdelta(tdelta, fmt):
         d = {"days": tdelta.days}
@@ -204,6 +210,13 @@ async def timeit(ctx, *, command: str):
 
     await ctx.send(f'**{BOT_PREFIX}{new_ctx.command.qualified_name}** took **{end - start:.2f}s** to run')
 
+
+@bot.command()
+@commands.cooldown(rate=1, per=180, type=BucketType.user)
+async def blurple(ctx, arg1=None):
+    picture = None
+
+    #await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
 
 async def collect_image(ctx, hint, static=False):
     mentions = MENTION_RE.findall(hint) if hint is not None else []
