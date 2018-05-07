@@ -6,6 +6,7 @@ import math
 import time
 import io
 import re
+import os
 
 import numpy as np
 import discord
