@@ -73,11 +73,11 @@ class ImageStats:
         pixels = img.size[0] * img.size[1]
 
         mask = np.logical_and(np.abs(arr - DARK_BLURPLE) >= COLOUR_BUFFER,
-                              np.abs(arr - BLURPLE) >= COLOUR_BUFFER,
-                              np.abs(arr - WHITE) >= COLOUR_BUFFER)
+                              np.abs(arr - BLURPLE) >= COLOUR_BUFFER)
+        mask = np.logical_and(mask, np.abs(arr - WHITE) >= COLOUR_BUFFER)
         mask = np.any(mask, axis=2)
 
-        arr[mask] = (0, 0, 0, 255)
+        arr[mask] = (0, 0, 0, 0)
 
         image_file_object = io.BytesIO()
         Image.fromarray(np.uint8(arr)).save(image_file_object, format='png')
