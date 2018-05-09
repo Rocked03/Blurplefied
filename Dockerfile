@@ -8,6 +8,8 @@ RUN apk update && \
             jpeg-dev \
             build-base \
             libwebp \
-            libwebp-dev && \
+            libwebp-dev \
+            libpng \
+            libpng-dev && \
     pip install -r requirements.txt
 ENTRYPOINT ["python", "blurple.py"]
