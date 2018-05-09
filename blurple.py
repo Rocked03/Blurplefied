@@ -1,20 +1,28 @@
 # THIS BLOCK OF 'import' BELOW INCLUDE LIBS NOT INCLUDED IN DEFAULT PYTHON
 # THESE CAN BE INSTALLED BY TYPING THE PIP INSTALLS INTO COMMAND PROMPT
-# This code is copied straight from my original, therefore there are some little hidden unused things you might find when looking around. ;)
-
-
+# This code is copied straight from my original, therefore there are some
+# little hidden unused things you might find when looking around. ;)
 
 # https://www.python.org/downloads/ v3.6.5
 
 from config import *
-import discord # discord.py rewrite
-# pip install -U git+https://github.com/Rapptz/discord.py@rewrite#egg=discord.py[voice]
-from discord.ext import commands
-from discord.ext.commands.cooldowns import BucketType
+
+import discord
+# discord.py rewrite
+
 import asyncio
+
+try:
+    import uvloop
+    loop = uvloop.new_event_loop()
+except ImportError:
+    loop = asyncio.get_event_loop()
+# Tries to use uvloop for the event loop.
+
 from PIL import Image, ImageEnhance, ImageSequence
 import PIL
-#pip install Pillow
+# pip install Pillow
+
 from io import BytesIO
 import io
 import datetime
@@ -22,12 +30,16 @@ import aiohttp
 import copy
 import sys
 import time
+
 from resizeimage import resizeimage
-#pip install python-resize-image
+# pip install python-resize-image
+
 import math
 
-description = '''Blurple Bot'''
-bot = commands.Bot(command_prefix=BOT_PREFIX, description=description)
+bot = discord.AutoShardedClient(
+    shard_count=5,
+    loop=loop
+)
 
 rocked = 204778476102877187
 
@@ -36,23 +48,33 @@ bluplehex = 0x7289da
 darkblurple = (78, 93, 148)
 white = (255, 255, 255)
 
-bot.remove_command('help')
-
-allowedusers = {204778476102877187, 226595531844091904, 191602259904167936} #put your user id here, and it will allow you to use the 'hidden' commands (and shutdown command)
+allowedusers = {204778476102877187, 226595531844091904, 191602259904167936}
+# put your user id here, and it will allow you to use the 'hidden' commands
+# (and shutdown command)
 approved_channels = {418987056111550464, 436300339273269278}
 
-def allowed_users():
-    async def pred(ctx):
-        return ctx.author.id in allowedusers
-    return commands.check(pred)
+commands = dict()
 
-@bot.check
-async def globally_block_dms(ctx):
-    return ctx.guild is not None
 
-@bot.check
-async def only_in_commands_channels(ctx):
-    return ctx.channel.id in approved_channels or ctx.author.id in allowedusers
+def command(
+    description="No description given.",
+    allowed_users_only=False,
+    not_dms=True,
+    command_name=None
+):
+    def deco(func):
+        if command_name:
+            n = command_name
+        else:
+            n = func.__name__
+        func.cmd_attr = {
+            "description": description,
+            "allowed_users_only": allowed_users_only,
+            "not_dms": not_dms
+        }
+        commands[n] = func
+    return deco
+
 
 @bot.event
 async def on_connect():
@@ -61,92 +83,100 @@ async def on_connect():
     print(bot.user.name)
     print(bot.user.id)
     print('------')
-    activity = discord.Game(name="Type "+BOT_PREFIX+"help")
+    activity = discord.Game(name=f"Type {BOT_PREFIX}help")
     await bot.change_presence(activity=activity)
 
-@bot.command(name='shutdown', aliases=["reboot"])
-@allowed_users()
-async def shutdown(ctx):
-    embed=discord.Embed(title="", timestamp=datetime.datetime.utcnow(), colour=0x7289da)
-    embed.add_field(name="Shutting down<a:underscore:420740967939964928>", value="Blurplefied")
-    await ctx.send(embed=embed)
+
+@command("Shuts down the bot.", allowed_users_only=True)
+async def shutdown(message, args):
+    embed = discord.Embed(
+        timestamp=datetime.datetime.utcnow(),
+        colour=0x7289da
+    )
+    embed.add_field(
+        name="Shutting down<a:underscore:420740967939964928>",
+        value="Blurplefied"
+    )
+    await message.channel.send(embed=embed)
     await bot.logout()
 
-@bot.command()
-async def help(ctx):
-    embed=discord.Embed(title="", timestamp=datetime.datetime.utcnow(), colour=0x7289da)
+
+@command("Displays the help.")
+async def help(message, args):
+    embed = discord.Embed(
+        timestamp=datetime.datetime.utcnow(),
+        colour=0x7289da
+    )
+    special = message.author.id in allowedusers
     embed.set_author(name="Commands list")
-    embed.add_field(name="Countdown", value=f"Time until Discord's Anniversary. \n**Usage:**\n`{BOT_PREFIX}countdown`")
-    embed.add_field(name="Blurple", value=f"Check how much blurple is in an image. If used without a picture, it analyses your own profile picture, and if it has enough blurple, you will receive a role. \n**Usage:**\n`{BOT_PREFIX}blurple <@username/user ID/picture url/None/uploaded image>`")
-    embed.add_field(name="Blurplefy", value=f"Blurplefy your image/gif! \n**Usage:**\n`{BOT_PREFIX}blurplefy <@username/user ID/picture url/None/uploaded image>`")
-    embed.set_footer(text=f"Help message requested by {ctx.message.author}")
+    for c in commands:
+        attrs = c.cmd_attr
+        if not (not special and attrs["allowed_users_only"]):
+            embed.add_field(
+                name=BOT_PREFIX + c,
+                value=attrs["description"]
+            )
+    embed.set_footer(text=f"Help message requested by {message.author}")
     embed.set_thumbnail(url=bot.user.avatar_url)
-    await ctx.send(embed=embed)
+    await message.channel.send(embed=embed)
 
-@bot.command()
-async def ping(ctx):
-    latency=bot.latency*1000
-    latency=round(latency,2)
-    latency=str(latency)
-    embed=discord.Embed(title="", colour=0x7289da, timestamp=datetime.datetime.utcnow())
+
+@command("Pings the bot.")
+async def ping(message, args):
+    latency = bot.latency*1000
+    latency = round(latency, 2)
+    embed = discord.Embed(
+        colour=0x7289da,
+        timestamp=datetime.datetime.utcnow()
+    )
     embed.set_author(name="Ping!")
-    embed.add_field(name='Bot latency', value=latency+"ms")
-    await ctx.send(embed=embed)
+    embed.add_field(name='Bot latency', value=f"{latency}ms")
+    await message.channel.send(embed=embed)
 
-@bot.command()
-async def countdown(ctx):
+
+@command("Counts down to Discord's birthday.")
+async def countdown(message, args):
     def strfdelta(tdelta, fmt):
         d = {"days": tdelta.days}
         d["hours"], rem = divmod(tdelta.seconds, 3600)
         d["minutes"], d["seconds"] = divmod(rem, 60)
         return fmt.format(**d)
 
-    timeleft = datetime.datetime(2018, 5, 13) + datetime.timedelta(hours=7) - datetime.datetime.utcnow()
+    timeleft = (
+        datetime.datetime(2018, 5, 13) + datetime.timedelta(hours=7) -
+        datetime.datetime.utcnow()
+    )
     embed = discord.Embed(name="", colour=0x7289da)
     embed.set_author(name="Time left until Discord's 3rd Anniversary")
-    embed.add_field(name="Countdown to midnight May 13 California time (UTC-7)", value=(strfdelta(timeleft, "**{days}** days, **{hours}** hours, **{minutes}** minutes, and **{seconds}** seconds")))
-    await ctx.send(embed=embed)
+    embed.add_field(
+        name="Countdown to midnight May 13 California time (UTC-7)",
+        value=(
+            strfdelta(
+                timeleft,
+                "**{days}** days, **{hours}** hours, **{minutes}** minutes,"
+                " and **{seconds}** seconds"
+            )
+        )
+    )
+    await message.channel.send(embed=embed)
 
-@bot.event
-async def on_command_error(ctx, error):
-    channel = bot.get_channel(436790039750508544)
-    #ignored = (commands.CommandNotFound, commands.UserInputError)
-    ignored = (commands.CommandNotFound)
-    if isinstance(error, ignored):
+
+@command("Times the execution of a command.", allowed_users_only=True)
+async def timeit(message, args):
+    cmd = args[0].lower()
+    del args[0]
+
+    if cmd not in commands:
+        await message.channel.send(
+            "Command not found."
+        )
         return
-
-    '''tracebackerror = traceback.print_exception(type(error), error, error.__traceback__)
-    await channel.send(tracebackerror)'''
-
-    if isinstance(error, commands.CommandOnCooldown):
-        if int(ctx.message.author.id) in allowedusers:
-            await ctx.reinvoke()
-            return
-        else:
-            msg = await ctx.send(f"{ctx.author.mention}, please slow down! The command `{BOT_PREFIX}{ctx.command}` has {round(error.retry_after, 1)}s left of cooldown.")
-            #await asyncio.sleep(5)
-            #await msg.delete()
-            #await ctx.message.delete()
-            return
-
-    print(error)
-
-    if isinstance(error, commands.CheckFailure):
-        return
-
-@bot.command()
-@allowed_users()
-async def timeit(ctx, *, command: str):
-    msg = copy.copy(ctx.message)
-    msg.content = ctx.prefix + command
-
-    new_ctx = await ctx.bot.get_context(msg)
 
     start = time.time()
-    await new_ctx.reinvoke()
+    await commands[cmd](message, args)
     end = time.time()
-    
-    await ctx.send(f'**{BOT_PREFIX}{new_ctx.command.qualified_name}** took **{end - start:.2f}s** to run')
+
+    await message.channel.send(f'**{BOT_PREFIX}{cmd}** took **{end - start:.2f}s** to run')
 
 
 @bot.command()
