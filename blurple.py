@@ -208,7 +208,7 @@ async def timeit(ctx, *, command: str):
     await ctx.send(f'**{BOT_PREFIX}{new_ctx.command.qualified_name}** took **{end - start:.2f}s** to run')
 
 
-async def collect_image(hint, static=False):
+async def collect_image(url, static=False):
     data = io.BytesIO()
     length = 0
     async with aiohttp.ClientSession() as cs:
@@ -264,7 +264,21 @@ def blurplefy_image(img):
 @bot.command()
 @commands.cooldown(rate=1, per=180, type=BucketType.user)
 async def blurple(ctx, arg1=None):
-    frames, url = await collect_image(ctx, arg1, True)
+    if ctx.message.attachments:
+        url = ctx.message.attachments[0].url
+    else:
+        if not arg1:
+            url = ctx.author.avatar_url
+        else:
+            try:
+                member = await commands.MemberConverter().convert(ctx, arg1)
+                url = member.avatar_url
+            except commands.BadArgument:
+                url = arg1
+    try:
+        frames, url = await collect_image(url, True)
+    except ValueError:
+        return await ctx.message.add_reaction('\N{CROSS MARK}')
     if frames is None:
         return await ctx.message.add_reaction('\N{CROSS MARK}')
 
