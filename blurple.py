@@ -176,15 +176,23 @@ async def timeit(message, args):
     await commands[cmd](message, args)
     end = time.time()
 
-    await message.channel.send(f'**{BOT_PREFIX}{cmd}** took **{end - start:.2f}s** to run')
+    await message.channel.send(
+        f'**{BOT_PREFIX}{cmd}** took **{end - start:.2f}s** to run'
+    )
 
 
-@bot.command()
-@commands.cooldown(rate=1, per=180, type=BucketType.user)
-async def blurple(ctx, arg1 = None):
+@command(
+    "Checks if your profile picture is blurple enough and if so gives "
+    "you a role.",
+    command_name="blurple"
+)
+async def _blurple(message, args):
     picture = None
 
-    await ctx.send(f"{ctx.message.author.mention}, starting blurple image analysis (Please note that this may take a while)")
+    await message.channel.send(
+        f"{message.author.mention}, starting blurple image"
+        " analysis (Please note that this may take a while)"
+    )
 
 
     start = time.time()
