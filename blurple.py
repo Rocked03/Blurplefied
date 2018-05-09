@@ -30,6 +30,7 @@ import aiohttp
 import copy
 import sys
 import time
+import logging
 
 from resizeimage import resizeimage
 # pip install python-resize-image
@@ -40,6 +41,8 @@ bot = discord.AutoShardedClient(
     shard_count=5,
     loop=loop
 )
+
+logging.basicConfig(level=logging.INFO)
 
 blurple = (114, 137, 218)
 bluplehex = 0x7289da
@@ -121,11 +124,6 @@ async def ratelimit_handler(user_id):
 
 @bot.event
 async def on_connect():
-    print('------')
-    print('Logged in as')
-    print(bot.user.name)
-    print(bot.user.id)
-    print('------')
     activity = discord.Game(name=f"Type {BOT_PREFIX}help")
     await bot.change_presence(activity=activity)
 
@@ -211,7 +209,7 @@ async def help(message, args):
     special = message.author.id in allowedusers
     embed.set_author(name="Commands list")
     for c in commands:
-        attrs = c.cmd_attr
+        attrs = commands[c].cmd_attr
         if not (not special and attrs["allowed_users_only"]):
             embed.add_field(
                 name=BOT_PREFIX + c,
@@ -352,7 +350,7 @@ async def _blurple(message, args):
         impixels = imsize[0]*imsize[1]
         end = time.time()
         await message.channel.send(
-            f'{message.author.display_name}, image'
+            f'{message.author.mention}, image'
             f' resized smaller for easier processing ({end-start:.2f}s)'
         )
         start = time.time()
@@ -476,7 +474,7 @@ async def _blurple(message, args):
         blurpleuserrole not in message.author.roles and percentblurple > 5
     ):
         await message.author.send(
-            f"{message.author.display_name}, as your profile picture has "
+            f"{message.author.mention}, as your profile picture has "
             "enough blurple (over 75% in total and over 5% blurple), you have "
             f"recieved the role **{blurpleuserrole.name}**!"
         )
@@ -486,7 +484,7 @@ async def _blurple(message, args):
         blurpleuserrole not in message.author.roles
     ):
         await message.author.send(
-            f"{message.author.display_name}, your profile "
+            f"{message.author.mention}, your profile "
             "pic does not have enough blurple (over 75% in"
             " total and over 5% blurple), therefore you are"
             f" not eligible for the role '{blurpleuserrole.name}'. "
