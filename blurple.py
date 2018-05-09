@@ -53,12 +53,12 @@ allowedusers = {204778476102877187, 226595531844091904, 191602259904167936}
 approved_channels = {418987056111550464, 436300339273269278}
 
 commands = dict()
+ratelimited_users = dict()
 
 
 def command(
     description="No description given.",
     allowed_users_only=False,
-    not_dms=True,
     command_name=None
 ):
     def deco(func):
@@ -68,11 +68,55 @@ def command(
             n = func.__name__
         func.cmd_attr = {
             "description": description,
-            "allowed_users_only": allowed_users_only,
-            "not_dms": not_dms
+            "allowed_users_only": allowed_users_only
         }
         commands[n] = func
     return deco
+
+
+async def ratelimit_handler(user_id):
+    def ratelimit_get():
+        x = True
+        while x:
+            try:
+                ratelimited_until = ratelimited_users[user_id]
+                x = False
+            except KeyError:
+                ratelimited_until = None
+                x = False
+            except RuntimeError:
+                pass
+        return ratelimited_until
+
+    def ratelimit_update(seconds):
+        x = True
+        while x:
+            try:
+                ratelimited_users[user_id] = time.time() + seconds
+                x = False
+            except RuntimeError:
+                pass
+
+    ratelimited_until = await loop.run_in_executor(
+        None, ratelimit_get
+    )
+
+    if not ratelimited_until:
+        # Not ratelimited.
+        await loop.run_in_executor(
+            None, ratelimit_update, 90
+        )
+        return False
+
+    if ratelimited_until > time.time():
+        # Ratelimited!
+        return True
+
+    # Not ratelimited.
+    await loop.run_in_executor(
+        None, ratelimit_update, 90
+    )
+    return False
 
 
 @bot.event
@@ -84,6 +128,64 @@ async def on_connect():
     print('------')
     activity = discord.Game(name=f"Type {BOT_PREFIX}help")
     await bot.change_presence(activity=activity)
+
+
+@bot.event
+async def on_message(msg):
+    if isinstance(
+        msg.channel, discord.abc.PrivateChannel
+    ):
+        # We block DM's.
+        return
+
+    if not msg.content.startswith(BOT_PREFIX):
+        # Doesn't even start with the prefix.
+        return
+
+    msg_split = [x for x in msg.content.split(" ") if x != ""]
+
+    if len(msg_split) == 0:
+        # Empty message.
+        return
+
+    cmd = msg_split[0].lstrip(BOT_PREFIX).lower()
+
+    try:
+        cmd_func = commands[cmd]
+    except KeyError:
+        # Not a command.
+        return
+
+    special = msg.author.id in allowedusers
+
+    if not special:
+
+        if msg.channel.id not in approved_channels:
+            # Not a approved channel.
+            await msg.channel.send(
+                "Please go to a bot command channel.",
+                delete_after=15
+            )
+            return
+
+        if cmd_func.cmd_attr["allowed_users_only"]:
+            # Not special enough. :(
+            await msg.channel.send(
+                "This is for bot administrators only.",
+                delete_after=15
+            )
+            return
+
+        # Lets check ratelimiting.
+        if (await ratelimit_handler(msg.author.id)):
+            await msg.channel.send(
+                "You are being ratelimited! Try again soon!",
+                delete_after=15
+            )
+            return
+
+    # Lets run it!
+    await cmd_func(msg, msg_split[1:])
 
 
 @command("Shuts down the bot.", allowed_users_only=True)
