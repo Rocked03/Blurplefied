@@ -324,7 +324,7 @@ async def blurplefy(ctx, arg1=None):
     try:
         frames, url = await collect_image(url)
     except ValueError:
-        return await ctx.send("This does not appear to be a valid URL nor member.")
+        return await ctx.message.add_reaction('\N{CROSS MARK}')
     if frames is None:
         return await ctx.message.add_reaction('\N{CROSS MARK}')
 
